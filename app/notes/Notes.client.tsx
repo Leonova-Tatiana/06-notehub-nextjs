@@ -1,92 +1,110 @@
-import { useState } from "react";
-import NoteModal from "@/components/Modal/Modal";
+"use client";
 
-interface Note {
-  id: string;
-  title: string;
-  description: string;
+import { useState, useEffect } from "react";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useDebounce } from "use-debounce";
+import NoteList from "@/components/NoteList/NoteList";
+import NoteModal from "@/components/Modal/Modal";
+import NoteForm from "@/components/NoteForm/NoteForm";
+import Pagination from "@/components/Pagination/Pagination";
+import SearchBox from "@/components/SearchBox/SearchBox";
+import { fetchNotes } from "@/lib/api";
+import css from "./NotesPage.module.css";
+import type { FetchNotesResponse } from "@/lib/api";
+import { Toaster, toast } from "react-hot-toast";
+
+const PER_PAGE = 12;
+
+interface NotesClientProps {
+  initialData: FetchNotesResponse;
 }
 
-const Notes = () => {
+const NotesClient: React.FC<NotesClientProps> = ({ initialData }) => {
+  const [page, setPage] = useState(1);
+  const [pageCount, setPageCount] = useState(initialData.totalPages);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch] = useDebounce(search, 500);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [notes, setNotes] = useState<Note[]>([]);
 
-  const handleOpenModal = () => setIsModalOpen(true);
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setTitle("");
-    setDescription("");
-  };
+  const { data, isLoading, isError, error } = useQuery<
+    FetchNotesResponse | null,
+    Error
+  >({
+    queryKey: ["notes", page, PER_PAGE, debouncedSearch],
+    queryFn: () =>
+      fetchNotes({ page, perPage: PER_PAGE, search: debouncedSearch }),
+    placeholderData: keepPreviousData,
+    initialData: page === 1 && !debouncedSearch ? initialData : undefined,
+  });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    if (data?.totalPages !== undefined) {
+      setPageCount(data.totalPages);
+    }
+  }, [data]);
 
-    const newNote: Note = {
-      id: Date.now().toString(),
-      title,
-      description,
-    };
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
 
-    setNotes((prev) => [...prev, newNote]);
-    handleCloseModal();
-  };
+  useEffect(() => {
+    if (isError && error) {
+      if (error.message.includes("Access token is missing or empty")) {
+        toast.error(error.message);
+      } else if (
+        error.message.includes("Failed to execute 'setRequestHeader'")
+      ) {
+        toast.error(
+          "Invalid token. Please check your settings or update the token."
+        );
+      }
+    }
+  }, [isError, error]);
 
   return (
-    <div>
-      <button onClick={handleOpenModal}>Створити нотатку</button>
+    <div className={css.app}>
+      <Toaster position="top-center" />
+      <header className={css.toolbar}>
+        <SearchBox value={search} onChange={setSearch} />
+
+        {pageCount > 1 && (
+          <Pagination page={page} setPage={setPage} pageCount={pageCount} />
+        )}
+
+        <button
+          type="button"
+          className={css.button}
+          onClick={() => setIsModalOpen(true)}
+        >
+          Create note +
+        </button>
+      </header>
+
+      {isLoading && <p>Loading notes...</p>}
+      {isError &&
+        error &&
+        !error.message.includes("Access token is missing or empty") &&
+        !error.message.includes("Failed to execute 'setRequestHeader'") && (
+          <p className={css.error}>{error.message}</p>
+        )}
+      {!isLoading &&
+        !isError &&
+        data &&
+        data.notes &&
+        data.notes.length === 0 && <p>No notes found</p>}
+      {!isLoading &&
+        !isError &&
+        data &&
+        data.notes &&
+        data.notes.length > 0 && <NoteList notes={data.notes} />}
 
       {isModalOpen && (
-        <NoteModal onClose={handleCloseModal}>
-          <div style={{ padding: "1rem" }}>
-            <h2>Нова нотатка</h2>
-            <form onSubmit={handleSubmit}>
-              <label>
-                Назва:
-                <input
-                  type="text"
-                  name="title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  required
-                />
-              </label>
-              <br />
-              <label>
-                Опис:
-                <textarea
-                  name="description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  required
-                />
-              </label>
-              <br />
-              <button type="submit">Зберегти</button>
-              <button type="button" onClick={handleCloseModal}>
-                Скасувати
-              </button>
-            </form>
-          </div>
+        <NoteModal onClose={() => setIsModalOpen(false)}>
+          <NoteForm onCancel={() => setIsModalOpen(false)} />
         </NoteModal>
       )}
-
-      <div style={{ marginTop: "2rem" }}>
-        <h2>Мої нотатки</h2>
-        {notes.length === 0 ? (
-          <p>Немає нотаток</p>
-        ) : (
-          notes.map((note) => (
-            <div key={note.id} style={{ marginBottom: "1rem" }}>
-              <strong>{note.title}</strong>
-              <p>{note.description}</p>
-            </div>
-          ))
-        )}
-      </div>
     </div>
   );
 };
 
-export default Notes;
+export default NotesClient;

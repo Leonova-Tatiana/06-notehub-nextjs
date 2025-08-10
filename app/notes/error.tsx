@@ -1,9 +1,7 @@
 "use client";
 
 type ErrorProps = {
-  error: {
-    message: string;
-  };
+  error: Error;
 };
 
 export default function Error({ error }: ErrorProps) {

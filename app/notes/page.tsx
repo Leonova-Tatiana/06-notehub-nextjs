@@ -1,7 +1,18 @@
-"use client";
+import NotesClient from "./Notes.client";
+import { fetchNotes } from "@/lib/api";
+import type { FetchNotesResponse } from "@/lib/api";
 
-import Notes from "@/app/notes/Notes.client";
+export default async function NotesPage() {
+  let initialData: FetchNotesResponse;
 
-export default function NotesPage() {
-  return <Notes />;
+  try {
+    initialData = await fetchNotes({ page: 1, perPage: 12 });
+  } catch {
+    initialData = {
+      notes: [],
+      totalPages: 0,
+    };
+  }
+
+  return <NotesClient initialData={initialData} />;
 }
